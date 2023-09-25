@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Camera Image Capture</title>
+</head>
+<body>
+    <h1>Camera Image Capture</h1>
+    
+    <!-- Add a form element with method="post" and action="/camera_capture/" -->
+    <form method="post" action="/camera_capture/">
+        <video id="video" width="640" height="480" autoplay></video>
+        <button id="capture">Capture Image</button>
+
+        <canvas id="canvas" style="display: none;"></canvas>
+
+        <button id="submit" style="display: none;">Submit</button>
+
+        <img id="captured-image" src="" alt="Captured Image" style="display: none; width: 300px; height: auto;">
+
+        <div id="status"></div>
+
+        <!-- Include the CSRF token within the form -->
+        {% csrf_token %}
+    </form>
+
+    <script>
+        // JavaScript code for camera access and image capture
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+        const captureButton = document.getElementById('capture');
+        const submitButton = document.getElementById('submit');
+        const capturedImage = document.getElementById('captured-image');
+        const statusDiv = document.getElementById('status');
+
+        // Access the user's camera
+        navigator.mediaDevices
+            .getUserMedia({ video: true })
+            .then(function (stream) {
+                video.srcObject = stream;
+            })
+            .catch(function (error) {
+                console.error('Error accessing the camera:', error);
+            });
+
+        // Capture an image from the camera
+        captureButton.addEventListener('click', function () {
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            capturedImage.src = canvas.toDataURL('image/jpeg');
+            capturedImage.style.display = 'block';
+            submitButton.style.display = 'block';
+        });
+
+        // Send the captured image to the server
+        submitButton.addEventListener('click', function () {
+            const imageData = canvas.toDataURL('image/jpeg');
+            // Send the captured image data to the Django backend using AJAX
+            fetch('/camera_capture/', {
+                method: 'POST',
+                body: JSON.stringify({ image_data: imageData }),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'), // Include CSRF token
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Handle the server response here
+                // You can display a message to the user or redirect them
+                if (data.status === 'logged_in') {
+                    statusDiv.textContent = 'Logged in successfully!';
+                    // Redirect the user to the desired page upon successful login
+                    // Example: window.location.href = '/dashboard/';
+                } else if (data.status === 'register') {
+                    statusDiv.textContent = 'No match found. Please register.';
+                    // Redirect the user to the registration page
+                    // Example: window.location.href = '/register/';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        });
+
+        // Function to get CSRF token from cookies
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    </script>
+</body>
+</html>
+
