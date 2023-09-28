@@ -1,75 +1,67 @@
-import os
-import uuid
-from django.conf import settings
-from django.core.files.storage import default_storage
-from mtcnn.mtcnn import MTCNN
-from numpy import asarray
-from PIL import Image 
-from rest_framework.decorators import api_view
+# views.py
+from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from .models import DetectedFace
-from .serializers import DetectedFaceSerializer
+from .serializers import FaceRecognitionSerializer
+import cv2
+import face_recognition as fr
+from .models import User
+import numpy as np
+import tempfile
+import os
+import time
 
-@api_view(['POST', 'GET'])
-def image(request):
-    if request.method == 'POST':
-        if 'image' in request.FILES:
-            try:
-                # Upload the image and get its path
-                img = request.FILES['image']
-                img_extension = os.path.splitext(img.name)[-1]
-                image_path = default_storage.save(settings.MEDIA_URL + str(uuid.uuid4()) + img_extension, img)
+class FaceRecognitionLogin(APIView):
+    def post(self, request, format=None):
+        serializer = FaceRecognitionSerializer(data=request.data)
+        if serializer.is_valid():
+            # Initialize the webcam
+            video_capture = cv2.VideoCapture(0)
 
-                # Detect faces in the uploaded image
-                detected_faces = detect_faces_in_image(image_path)
+            # Set the duration for capturing frames (e.g., 120 seconds)
+            capture_duration = 120  # in seconds
+            start_time = time.time()
 
-                # Serialize the detected faces and save them to the database
-                serialized_faces = []
-                for face_data in detected_faces:
-                    detected_face = DetectedFace.objects.create(
-                        image_path=image_path,
-                        confidence=face_data["confidence"],
-                        bounding_box=face_data["box"],
-                        keypoints=face_data["keypoints"]
-                    )
-                    serialized_face = DetectedFaceSerializer(detected_face).data
-                    serialized_faces.append(serialized_face)
+            captured_face_encoding = None
 
-                return Response({"detected_faces": serialized_faces}, status=status.HTTP_201_CREATED)
+            while time.time() - start_time < capture_duration:
+                # Capture a frame from the webcam
+                ret, frame = video_capture.read()
 
-            except Exception as e:
-                return Response({"message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                # Display the frame (optional)
+                cv2.imshow('Webcam', frame)
 
-        else:
-            return Response({"message": "No 'image' file provided in the request."}, status=status.HTTP_400_BAD_REQUEST)
+                # Save the captured image temporarily
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_image:
+                    cv2.imwrite(temp_image.name, frame)
 
-    elif request.method == 'GET':
-        # Handle the GET request to retrieve a list of detected faces
-        detected_faces = DetectedFace.objects.all()
-        serialized_faces = DetectedFaceSerializer(detected_faces, many=True).data
-        return Response({"detected_faces": serialized_faces}, status=status.HTTP_200_OK)
+                # Load and encode the captured image
+                captured_image = fr.load_image_file(temp_image.name)
+                captured_face_encoding = fr.face_encodings(captured_image)
 
-def detect_faces_in_image(image_path):
-    image = Image.open(default_storage.open(image_path))
-    image = image.convert('RGB')
-    pixels = asarray(image)
+                # If a face is found, break the loop
+                if captured_face_encoding:
+                    break
 
-    detector = MTCNN()
+                # Delete the temporary image file
+                os.remove(temp_image.name)
 
-    # Detect faces in the image
-    results = detector.detect_faces(pixels)
+                # Allow for graceful exit (press 'q' key to stop)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
 
-    # Extract the bounding box from the faces
-    detected_faces = []
+            # Release the webcam and destroy the OpenCV window
+            video_capture.release()
+            cv2.destroyAllWindows()
 
-    for result in results:
-        # Only detect faces with a confidence of 90% and above
-        if result['confidence'] > 0.90:
-            detected_faces.append({
-                "confidence": result['confidence'],
-                "box": result['box'],
-                "keypoints": result['keypoints']
-            })
+            if captured_face_encoding:
+                captured_face_encoding = captured_face_encoding[0]
 
-    return detected_faces
+                # Compare the captured face encoding with known users
+                users = User.objects.all()
+                for user in users:
+                    if user.face_encoding and fr.compare_faces([user.face_encoding], captured_face_encoding)[0]:
+                        return Response({"message": "User authenticated successfully"})
+
+            return Response({"message": "Authentication failed"}, status=403)
+
+        return Response(serializer.errors, status=400)
