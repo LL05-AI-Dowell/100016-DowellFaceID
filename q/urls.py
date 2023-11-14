@@ -16,27 +16,27 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from .views import FaceRecognitionView, FaceDetection, Image, Face
+from .views import FaceDetection, Image
 from django.conf import settings
 from django.conf.urls.static import static
- 
 
-#from rest_framework_simplejwt.views import (
-   # TokenObtainPairView,
-    #TokenRefreshView,
-    #TokenVerifyView
-#)
+
+# from rest_framework_simplejwt.views import (
+# TokenObtainPairView,
+# TokenRefreshView,
+# TokenVerifyView
+# )
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('',FaceDetection.as_view(), name='detect'),
-    path('image/',FaceRecognitionView.as_view(), name='view'),
-    path('upload-image/',Image.as_view(), name='upload-image'),
-    path('face/',Face.as_view(), name='face'),
-    
-    #path('jwt/create/',TokenVerifyView.as_view(), name="jwt-create"),
-    #path('jwt/refresh/',TokenRefreshView.as_view(), name="token-refresh"),
-    #path('jwt/verify/',TokenObtainPairView.as_view(), name="jwt-create"),
+    path('', FaceDetection.as_view(), name='detect'),
+    path('upload-image/', Image.as_view(), name='upload-image'),
+
+
+    # path('jwt/create/',TokenVerifyView.as_view(), name="jwt-create"),
+    # path('jwt/refresh/',TokenRefreshView.as_view(), name="token-refresh"),
+    # path('jwt/verify/',TokenObtainPairView.as_view(), name="jwt-create"),
 ]
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.MEDIA_URL,
+                          document_root=settings.MEDIA_ROOT)
